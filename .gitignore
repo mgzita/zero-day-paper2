@@ -1,0 +1,13 @@
+﻿*.npz
+*.csv
+*.pcap
+*.pt
+*.pth
+*.pkl
+__pycache__/
+data/
+results/
+*.parquet
+cleaned_data/
+raw_data/
+*.npy

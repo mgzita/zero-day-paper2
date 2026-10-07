@@ -1,0 +1,198 @@
+"""
+Train LODO-2 checkpoints: CIC-IDS2017 + UNSW-NB15, CSE-CIC-IDS2018
+excluded entirely from training.
+=========================================================================
+Enables a non-circular replication of the attribution/ESFRP analysis
+with CSE-CIC-IDS2018 as a genuinely unseen target, mirroring the
+LODO-based correction already used for Deep SVDD's latent-space test.
+
+This matches Paper 1's LODO-2 configuration (train on CIC17+UNSW, test
+on CIC18) but was previously only trained/saved for DAE in Paper 1's
+own artifacts. Trains all three families here, seed 42 first.
+
+Uses the FULL available CIC17 and UNSW blocks (not size-matched),
+matching Paper 1's LODO protocol.
+
+Run from project root:
+    python paper2\\pilot\\train_lodo2_checkpoints.py
+"""
+
+import os
+import numpy as np
+import torch
+import torch.nn as nn
+
+SEEDS_TO_TRAIN = [42]
+MODEL_FAMILIES = ["ae", "dae", "svdd"]
+
+N_FEATURES = 18
+EPOCHS = 100
+BATCH_SIZE = 256
+LR = 1e-3
+PATIENCE = 10
+NOISE_STD_DAE = 0.1
+
+DEDUP_DIR = r"C:\MLProject\zero_day_project\artefacts_v2\dedup"  # TODO confirm
+
+
+class AutoencoderModel(nn.Module):
+    def __init__(self, input_dim=N_FEATURES):
+        super().__init__()
+        self.encoder = nn.Sequential(
+            nn.Linear(input_dim, 64), nn.ReLU(),
+            nn.Linear(64, 32), nn.ReLU(),
+            nn.Linear(32, 16), nn.ReLU(),
+            nn.Linear(16, 8), nn.ReLU(),
+        )
+        self.decoder = nn.Sequential(
+            nn.Linear(8, 16), nn.ReLU(),
+            nn.Linear(16, 32), nn.ReLU(),
+            nn.Linear(32, 64), nn.ReLU(),
+            nn.Linear(64, input_dim),
+        )
+
+    def forward(self, x):
+        return self.decoder(self.encoder(x))
+
+
+class SVDDEncoder(nn.Module):
+    def __init__(self, input_dim=N_FEATURES, latent_dim=16):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, 64, bias=False), nn.ReLU(),
+            nn.Linear(64, 32, bias=False), nn.ReLU(),
+            nn.Linear(32, latent_dim, bias=False),
+        )
+        self.register_buffer("center", torch.zeros(latent_dim))
+
+    def forward(self, x):
+        return self.net(x)
+
+
+def train_autoencoder(X_train, X_val, seed, noise_std):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    model = AutoencoderModel(N_FEATURES)
+    optimizer = torch.optim.Adam(model.parameters(), lr=LR)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=5, factor=0.5)
+    criterion = nn.HuberLoss(delta=1.0)
+    X_t, X_v = torch.FloatTensor(X_train), torch.FloatTensor(X_val)
+    best_loss, patience_c, best_state = float('inf'), 0, None
+
+    for epoch in range(EPOCHS):
+        model.train()
+        idx = torch.randperm(len(X_t))
+        for i in range(0, len(X_t), BATCH_SIZE):
+            batch = X_t[idx[i:i + BATCH_SIZE]]
+            noisy = torch.clamp(batch + torch.randn_like(batch) * noise_std, -10, 10) if noise_std > 0 else batch
+            optimizer.zero_grad()
+            criterion(model(noisy), batch).backward()
+            optimizer.step()
+        model.eval()
+        with torch.no_grad():
+            noisy_v = torch.clamp(X_v + torch.randn_like(X_v) * noise_std, -10, 10) if noise_std > 0 else X_v
+            val_loss = criterion(model(noisy_v), X_v).item()
+        scheduler.step(val_loss)
+        if val_loss < best_loss:
+            best_loss, best_state, patience_c = val_loss, {k: v.clone() for k, v in model.state_dict().items()}, 0
+        else:
+            patience_c += 1
+            if patience_c >= PATIENCE:
+                print(f"    Early stop epoch {epoch + 1}")
+                break
+    model.load_state_dict(best_state)
+    return model
+
+
+def train_svdd(X_train, X_val, seed):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    model = SVDDEncoder(N_FEATURES, latent_dim=16)
+    optimizer = torch.optim.Adam(model.parameters(), lr=LR, weight_decay=1e-6)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=5, factor=0.5)
+    X_t, X_v = torch.FloatTensor(X_train), torch.FloatTensor(X_val)
+
+    model.eval()
+    with torch.no_grad():
+        c = model(X_t[:min(50000, len(X_t))]).mean(dim=0)
+        eps = 0.1
+        c[(c.abs() < eps) & (c >= 0)] = eps
+        c[(c.abs() < eps) & (c < 0)] = -eps
+        model.center.copy_(c)
+
+    best_loss, patience_c, best_state = float('inf'), 0, None
+    for epoch in range(EPOCHS):
+        model.train()
+        idx = torch.randperm(len(X_t))
+        for i in range(0, len(X_t), BATCH_SIZE):
+            batch = X_t[idx[i:i + BATCH_SIZE]]
+            optimizer.zero_grad()
+            z = model(batch)
+            loss = ((z - model.center) ** 2).sum(dim=1).mean()
+            loss.backward()
+            optimizer.step()
+        model.eval()
+        with torch.no_grad():
+            z_v = model(X_v)
+            val_loss = ((z_v - model.center) ** 2).sum(dim=1).mean().item()
+        scheduler.step(val_loss)
+        if val_loss < best_loss:
+            best_loss, best_state, patience_c = val_loss, {k: v.clone() for k, v in model.state_dict().items()}, 0
+        else:
+            patience_c += 1
+            if patience_c >= PATIENCE:
+                print(f"    Early stop epoch {epoch + 1}")
+                break
+    model.load_state_dict(best_state)
+    return model
+
+
+def load_lodo2_train_val():
+    d_train = np.load(os.path.join(DEDUP_DIR, "train_dedup.npz"))
+    X_train_full = np.clip(d_train["X_train"], -10, 10).astype(np.float32)
+    n_per_env = len(X_train_full) // 3
+    cic17_block = X_train_full[:n_per_env]
+    unsw_block = X_train_full[2 * n_per_env:]
+    X_train_lodo2 = np.vstack([cic17_block, unsw_block])
+
+    d_val = np.load(os.path.join(DEDUP_DIR, "val_dedup.npz"))
+    X_val_full = np.clip(d_val["X_val"], -10, 10).astype(np.float32)
+    n_val_per_env = len(X_val_full) // 3
+    cic17_val = X_val_full[:n_val_per_env]
+    unsw_val = X_val_full[2 * n_val_per_env:]
+    X_val_lodo2 = np.vstack([cic17_val, unsw_val])
+
+    return X_train_lodo2, X_val_lodo2
+
+
+def main():
+    X_train, X_val = load_lodo2_train_val()
+    print(f"LODO-2 (CIC17+UNSW) training set: {len(X_train)} flows, "
+          f"validation set: {len(X_val)} flows. CSE-CIC-IDS2018 excluded entirely.\n")
+
+    for family in MODEL_FAMILIES:
+        for seed in SEEDS_TO_TRAIN:
+            ckpt_dir = os.path.join(DEDUP_DIR, f"seed{seed}_{family}")
+            fname = "dae_" if family == "dae" else f"{family}_"
+            ckpt_path = os.path.join(ckpt_dir, f"{fname}lodo2.pt")
+            if os.path.exists(ckpt_path):
+                print(f"[{family}/seed{seed}] Checkpoint already exists at {ckpt_path}, skipping.")
+                continue
+
+            print(f"[{family}/seed{seed}] Training LODO-2...")
+            if family == "ae":
+                model = train_autoencoder(X_train, X_val, seed, noise_std=0.0)
+            elif family == "dae":
+                model = train_autoencoder(X_train, X_val, seed, noise_std=NOISE_STD_DAE)
+            elif family == "svdd":
+                model = train_svdd(X_train, X_val, seed)
+            else:
+                raise ValueError(family)
+
+            os.makedirs(ckpt_dir, exist_ok=True)
+            torch.save(model.state_dict(), ckpt_path)
+            print(f"[{family}/seed{seed}] Saved -> {ckpt_path}\n")
+
+
+if __name__ == "__main__":
+    main()
