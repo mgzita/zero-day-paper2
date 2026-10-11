@@ -11,3 +11,8 @@ results/
 cleaned_data/
 raw_data/
 *.npy
+
+# later work
+paper3/
+*evasion*.py
+*1.py

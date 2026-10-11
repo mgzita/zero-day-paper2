@@ -58,7 +58,7 @@ FEATURE_NAMES = [
 # fwd_iat_mean showed extreme (83-100%) clipping in the initial run.
 LOG_TRANSFORM_FEATURES = [
     "flow_bytes_s", "flow_duration", "fwd_iat_mean",
-    "bwd_iat_mean", "bwd_packet_length_mean",
+    "bwd_iat_mean", "bwd_packet_length_mean", "fwd_packet_length_mean",
 ]
 
 COLUMN_MAPPING = {
