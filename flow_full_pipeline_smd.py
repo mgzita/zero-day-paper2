@@ -491,6 +491,10 @@ def h3_ablation(seed, X_unsw, y_unsw):
     return {
         "seed": seed, "delta_stable": delta_stable, "delta_sensitive": delta_sensitive,
         "delta_middle": delta_middle,
+        "auroc_full": auroc_full,
+        "auroc_stable": auroc_stable,
+        "auroc_sensitive": auroc_sensitive,
+        "auroc_middle": auroc_middle,
     }
 
 

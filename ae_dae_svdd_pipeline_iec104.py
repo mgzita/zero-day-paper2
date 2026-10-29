@@ -26,6 +26,7 @@ Run from project root:
 """
 
 import json
+import hashlib
 import os
 import numpy as np
 import pandas as pd
@@ -268,16 +269,31 @@ def load_cic17_benign_training_block():
     return X_train_full[:n_per_env]
 
 
-def checkpoint_path(seed, family, condition, input_dim=N_FEATURES):
+def _feature_subset_key(feature_subset):
+    """Stable identifier for a feature subset, for use in checkpoint
+    filenames. Keyed on the actual sorted feature names (not just the
+    count), so two different same-size subsets never collide on one
+    checkpoint file."""
+    if not feature_subset:
+        return ""
+    names = ",".join(sorted(feature_subset))
+    digest = hashlib.sha1(names.encode("utf-8")).hexdigest()[:10]
+    return f"_feat{len(feature_subset)}_{digest}"
+
+
+def checkpoint_path(seed, family, condition, input_dim=N_FEATURES, feature_subset=None):
     ckpt_dir = os.path.join(DEDUP_DIR, f"seed{seed}_{family}")
     fname = "dae_" if family == "dae" else f"{family}_"
-    suffix = "" if input_dim == N_FEATURES else f"_dim{input_dim}"
+    if feature_subset:
+        suffix = _feature_subset_key(feature_subset)
+    else:
+        suffix = "" if input_dim == N_FEATURES else f"_dim{input_dim}"
     return os.path.join(ckpt_dir, f"{fname}{condition}{suffix}.pt")
 
 
 def ensure_checkpoint(seed, family, condition, feature_subset=None):
     input_dim = len(feature_subset) if feature_subset else N_FEATURES
-    path = checkpoint_path(seed, family, condition, input_dim)
+    path = checkpoint_path(seed, family, condition, input_dim, feature_subset=feature_subset)
     if os.path.exists(path):
         return path
 
@@ -472,6 +488,10 @@ def h3_ablation(seed, family, X_eval, y_eval):
     return {
         "seed": seed, "family": family,
         "delta_stable": delta_stable, "delta_sensitive": delta_sensitive, "delta_middle": delta_middle,
+        "auroc_full": auroc_full,
+        "auroc_stable": auroc_stable,
+        "auroc_sensitive": auroc_sensitive,
+        "auroc_middle": auroc_middle,
     }
 
 
