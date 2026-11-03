@@ -19,7 +19,7 @@ This study follows [zero-day-ids-ensemble](https://github.com/mgzita/zero-day-id
 
 ## Key results
 
-- 13 of 48 tests survive false discovery rate correction.
+- 12 of 48 tests survive false discovery rate correction.
 - KernelSHAP showed apparent effects for four of twelve model and target combinations; none was reproduced with Integrated Gradients.
 - Functional ablation effects depend on both model and target. Deep SVDD reverses from Sensitive-feature dominance on UNSW-NB15 (d = 3.04) to Stable-feature dominance on IEC-104 (d = −1.08); the Normalizing Flow shows the same reversal between UNSW-NB15 and SMD.
 - The apparent IEC-104 Normalizing Flow reversal in MMD² is a radial basis function kernel bandwidth artifact. Sliced Wasserstein distance shows a narrower representation gap under Diverse training.
