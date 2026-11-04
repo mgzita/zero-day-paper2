@@ -1,5 +1,5 @@
 {
-  "created": "2026-11-03T17:19:19",
+  "created": "2026-11-04T10:59:25",
   "python": "3.13.9 | packaged by Anaconda, Inc. | (main, Oct 21 2025, 19:09:58) [MSC v.1929 64 bit (AMD64)]",
   "platform": "Windows-11-10.0.26200-SP0",
   "machine": "AMD64",
@@ -14,8 +14,8 @@
     "statsmodels": "0.14.5",
     "captum": "0.9.0"
   },
-  "git_commit": "d6ed7ceff5ed189193d52b3c69567a0a50acd74c",
-  "git_dirty": true,
+  "git_commit": "e8169daf05a9d85eb159d83bac60ab9cbf6c4e6f",
+  "git_dirty": false,
   "scripts": {
     "ablation_h3_lodo3.py": {
       "sha256": "1db08d6632aad044892092156b257cb7c706798fd6ce9669cbc4a654ba609d86",
@@ -523,7 +523,7 @@
     }
   },
   "results": {
-    "RUN_MANIFEST.json": "986ccf406606afb8c3a8c25d9eace19ccc3630fe7308758972fddeb0c426d818",
+    "RUN_MANIFEST.json": "3d1521395361c8cdf506215e1e1247cb158a5058f7a77594d9243b0bf5d63756",
     "ablation_h3_lodo3_combined_10seed_stats.json": "2806f8f86158f8ecfa4aa91e82c76eaaa68ab4622fb98542c2595a9d8db6f717",
     "ablation_h3_lodo3_paired_stats.json": "b988455722875e88bed086c82d0e76f10228787368dddb4fb99d9991d16e7778",
     "ablation_h3_lodo3_paired_stats_extraseeds.json": "128cc6129a888c72483ba9763b052e7143922ec5e5bd526ca3b70000c6bcfb37",
